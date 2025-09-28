@@ -264,7 +264,7 @@ export function TaskChatInterface({ taskId }: TaskChatInterfaceProps = {}) {
     setFinalAnswer(null)
 
     try {
-      // If we have an existing chat (taskId prop), continue in that chat
+        // If we have an existing chat (taskId prop), continue in that chat
       if (taskId) {
         // Create a new task for the follow-up request
         const response = await fetch(`${API_BASE_URL}/api/tasks`, {
@@ -274,6 +274,7 @@ export function TaskChatInterface({ taskId }: TaskChatInterfaceProps = {}) {
           },
           body: JSON.stringify({
             task: taskDescription,
+            user_id: user?.id,
           }),
         })
 
@@ -324,6 +325,7 @@ export function TaskChatInterface({ taskId }: TaskChatInterfaceProps = {}) {
           },
           body: JSON.stringify({
             task: taskDescription,
+            user_id: user?.id,
           }),
         })
 
@@ -396,44 +398,41 @@ export function TaskChatInterface({ taskId }: TaskChatInterfaceProps = {}) {
             <p>Starting task execution...</p>
           </div>
         ) : (
-          messages.map((message, i) => {
-            const isLastMessage = i === messages.length - 1;
-            const isLastAssistantMessage = isLastMessage && message.role === 'assistant' && isWorking;
+          <>
+            {messages.map((message, i) => {
+              const isLastMessage = i === messages.length - 1;
+              const isLastAssistantMessage = isLastMessage && message.role === 'assistant' && isWorking;
+              const isFirstThinkingMessage = message.role === 'assistant' && i > 0 && messages[i-1].role === 'user';
 
-            return (
-              <div
-                key={i}
-                className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                {message.role === 'user' ? (
-                  <div className="max-w-[75%] rounded-xl px-3 py-1.5 bg-primary text-primary-foreground">
-                    <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                  </div>
-                ) : isLastAssistantMessage ? (
-                  <div className="flex items-center space-x-2">
-                  <Loader variant="pulse" size="sm"/>
-                  <Loader variant="text-shimmer" text={message.content} className="font-medium"/>
-                  </div>
-                ) : (
-                  <div className="max-w-[75%] px-3 py-1.5">
-                    <div className="text-sm whitespace-pre-wrap text-foreground font-medium">{message.content}</div>
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
+              return (
+                <div key={i}>
+                  {/* Thinking icon appears before first thinking message, after user messages */}
+                  {isFirstThinkingMessage && (
+                    <div className="flex justify-start mb-2">
+                      <img src="/thinking.png" alt="Thinking" className="h-8  object-cover" />
+                    </div>
+                  )}
 
-        {/* Working Indicator */}
-        {isWorking && (
-          <div className="flex justify-start">
-            <div className="bg-muted rounded-lg px-4 py-2 max-w-[75%]">
-              <div className="flex items-center space-x-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">working...</span>
-              </div>
-            </div>
-          </div>
+                  <div className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {message.role === 'user' ? (
+                      <div className="max-w-[75%] rounded-xl px-3 py-1.5 bg-primary text-primary-foreground">
+                        <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                      </div>
+                    ) : isLastAssistantMessage ? (
+                      <div className="flex items-center space-x-2">
+                      <Loader variant="pulse" size="sm"/>
+                      <Loader variant="text-shimmer" text={message.content} className="font-medium"/>
+                      </div>
+                    ) : (
+                      <div className="max-w-[75%] px-3 py-1.5">
+                        <div className="text-sm whitespace-pre-wrap text-foreground font-medium">{message.content}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </>
         )}
 
         {/* Final Answer */}

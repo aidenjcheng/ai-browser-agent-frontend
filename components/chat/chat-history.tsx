@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader } from '@/components/ui/sidebar'
-import { MessageSquare, Home, Search } from 'lucide-react'
+import { Home, Search } from 'lucide-react'
 
 import { useChatHistory } from '@/lib/use-chat-history'
 import { NewChatCommandDialog } from '@/components/command-dialog'
