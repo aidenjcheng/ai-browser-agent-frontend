@@ -6,9 +6,14 @@ import {
   PromptInputActions,
   PromptInputTextarea,
 } from "@/components/ui/prompt-input"
+import { PromptSuggestion } from "@/components/ui/prompt-suggestion"
 import { Button } from "@/components/ui/button"
-import { ArrowUp, Square, Play, Pause, StopCircle } from "lucide-react"
+import { ArrowUp } from "lucide-react"
 import { useState, useRef } from "react"
+import { cn } from "@/lib/utils"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { supabase } from "@/lib/supabase"
 
 interface TaskResponse {
   id: string
@@ -37,13 +42,30 @@ interface TaskStatus {
   steps?: number
 }
 
-export function PromptInputBasic() {
+interface PromptInputComponentProps {
+  onSubmit?: (content: string) => void
+  placeholder?: string
+  showSuggestions?: boolean
+  className?: string
+  tooltip?: string
+}
+
+export function PromptInputComponent({
+  onSubmit,
+  placeholder = "Describe what you want the browser to do...",
+  showSuggestions = true,
+  className = "w-full max-w-(--breakpoint-md)",
+  tooltip = "Start Chat"
+}: PromptInputComponentProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [currentTask, setCurrentTask] = useState<TaskResponse | null>(null)
   const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null)
   const [output, setOutput] = useState<string>("")
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  const router = useRouter()
+  const { user } = useAuth()
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
@@ -56,7 +78,6 @@ export function PromptInputBasic() {
         },
         body: JSON.stringify({
           task: taskDescription,
-          metadata: { source: "manus-ai-frontend" }
         }),
       })
 
@@ -108,66 +129,60 @@ export function PromptInputBasic() {
   }
 
   const handleSubmit = async () => {
-    if (!input.trim()) return
+    if (!input.trim() || !user) return
 
+    // Clear input immediately
+    const currentInput = input.trim()
+    setInput("")
     setIsLoading(true)
     setOutput("Starting task...")
     setCurrentTask(null)
     setTaskStatus(null)
 
-    const taskResponse = await runTask(input.trim())
+    try {
+      // Create the task first
+      const taskResponse = await runTask(currentInput)
 
-    if (taskResponse && taskResponse.id) {
-      // Start polling for status updates immediately since task is queued
-      pollingIntervalRef.current = setInterval(() => {
-        pollTaskStatus(taskResponse.id)
-      }, 2000) // Poll every 2 seconds
+      if (taskResponse && taskResponse.id) {
+        const newTaskId = taskResponse.id
 
-      // Initial status check
-      await pollTaskStatus(taskResponse.id)
-    } else {
+        // Create a chat with initial messages
+        const initialMessages = [{
+          id: `user-${Date.now()}`,
+          role: 'user',
+          content: currentInput,
+          timestamp: new Date().toISOString()
+          // user messages don't need a type field
+        }]
+
+        const { data: chatData, error: chatError } = await supabase
+          .from('chats')
+          .insert({
+            user_id: user.id,
+            task_id: newTaskId,
+            title: `Task: ${currentInput.slice(0, 50)}${currentInput.length > 50 ? '...' : ''}`,
+            messages: initialMessages
+          })
+          .select()
+          .single()
+
+        if (chatError) {
+          console.error('Error creating chat:', chatError)
+          setOutput(`Error creating chat: ${chatError.message}`)
+          setIsLoading(false)
+          return
+        }
+
+        // Navigate to the chat page
+        router.push(`/chat/${chatData.id}`)
+        return
+      } else {
+        setIsLoading(false)
+      }
+    } catch (error) {
+      console.error("Error in handleSubmit:", error)
+      setOutput(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
       setIsLoading(false)
-    }
-
-    setInput("")
-  }
-
-  const handleStop = () => {
-    if (currentTask?.id && pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current)
-      pollingIntervalRef.current = null
-    }
-    setIsLoading(false)
-    setOutput("Task stopped by user")
-  }
-
-  const handlePause = async () => {
-    if (currentTask?.id) {
-      try {
-        await fetch(`${API_BASE_URL}/api/tasks/${currentTask.id}/pause`, {
-          method: "PUT",
-        })
-        setOutput("Task paused")
-      } catch (error) {
-        console.error("Error pausing task:", error)
-      }
-    }
-  }
-
-  const handleResume = async () => {
-    if (currentTask?.id) {
-      try {
-        await fetch(`${API_BASE_URL}/api/tasks/${currentTask.id}/resume`, {
-          method: "PUT",
-        })
-        setOutput("Task resumed")
-        // Resume polling
-        pollingIntervalRef.current = setInterval(() => {
-          pollTaskStatus(currentTask.id)
-        }, 2000)
-      } catch (error) {
-        console.error("Error resuming task:", error)
-      }
     }
   }
 
@@ -186,118 +201,62 @@ export function PromptInputBasic() {
   }
 
   return (
-    <div className="w-full max-w-(--breakpoint-md) space-y-4">
+    <div className={`space-y-4 ${className}`}>
+      {showSuggestions && (
+        <div className="flex flex-wrap gap-2">
+          <PromptSuggestion onClick={() => setInput("Search for the latest news about AI")}>
+            Search for the latest news about AI
+          </PromptSuggestion>
+          <PromptSuggestion onClick={() => setInput("Take a screenshot of the current page")}>
+            Take a screenshot of the current page
+          </PromptSuggestion>
+          <PromptSuggestion onClick={() => setInput("Fill out a contact form with test data")}>
+            Fill out a contact form with test data
+          </PromptSuggestion>
+        </div>
+      )}
+
       <PromptInput
         value={input}
         onValueChange={handleValueChange}
         isLoading={isLoading}
-        onSubmit={handleSubmit}
+        onSubmit={() => {
+          if (onSubmit) {
+            onSubmit(input.trim())
+            setInput("") // Clear input immediately when using onSubmit prop
+          } else {
+            handleSubmit()
+          }
+        }}
         className="w-full"
       >
-        <PromptInputTextarea placeholder="Describe what you want the browser to do..." />
+        <PromptInputTextarea placeholder={placeholder} />
         <PromptInputActions className="justify-end pt-2">
-          <PromptInputAction tooltip="Run Task">
+          <PromptInputAction tooltip={tooltip}>
             <Button
               variant="default"
               size="icon"
-              className="h-8 w-8 rounded-full"
-              onClick={handleSubmit}
+              className={cn("h-8 w-8 rounded-full", (isLoading || !input.trim() && "disabled:opacity-30 bg-black text-white"))}
+              onClick={() => {
+                if (onSubmit) {
+                  onSubmit(input.trim())
+                  setInput("") // Clear input immediately when using onSubmit prop
+                } else {
+                  handleSubmit()
+                }
+              }}
               disabled={isLoading || !input.trim()}
             >
-              <Play className="size-5" />
+              <ArrowUp className="size-5" strokeWidth={3.25}/>
             </Button>
           </PromptInputAction>
-          {isLoading && currentTask && (
-            <>
-              <PromptInputAction tooltip="Pause Task">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8 rounded-full"
-                  onClick={handlePause}
-                >
-                  <Pause className="size-5" />
-                </Button>
-              </PromptInputAction>
-              <PromptInputAction tooltip="Resume Task">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8 rounded-full"
-                  onClick={handleResume}
-                >
-                  <Play className="size-5" />
-                </Button>
-              </PromptInputAction>
-              <PromptInputAction tooltip="Stop Task">
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  className="h-8 w-8 rounded-full"
-                  onClick={handleStop}
-                >
-                  <StopCircle className="size-5" />
-                </Button>
-              </PromptInputAction>
-            </>
-          )}
         </PromptInputActions>
       </PromptInput>
-
-      {/* Status and Output Display */}
-      {taskStatus && (
-        <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm font-medium">Status:</span>
-            <span className={`text-sm font-medium ${getStatusColor(taskStatus.status)}`}>
-              {taskStatus.status}
-            </span>
-          </div>
-          {currentTask?.id && (
-            <div className="text-xs text-gray-500">
-              Task ID: {currentTask.id}
-            </div>
-          )}
-        </div>
-      )}
-
-      {output && (
-        <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 max-h-96 overflow-y-auto">
-          <div className="text-sm font-medium mb-2">Output:</div>
-          <div className="text-sm whitespace-pre-wrap mb-4">{output}</div>
-
-          {taskStatus && taskStatus.urls_visited && taskStatus.urls_visited.length > 0 && (
-            <div className="mb-4">
-              <div className="text-sm font-medium mb-2">URLs Visited:</div>
-              <div className="text-xs space-y-1">
-                {taskStatus.urls_visited.map((url, index) => (
-                  <div key={index} className="text-blue-600 truncate">{url}</div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {taskStatus && taskStatus.actions && taskStatus.actions.length > 0 && (
-            <div className="mb-4">
-              <div className="text-sm font-medium mb-2">Actions Taken ({taskStatus.steps || taskStatus.actions.length}):</div>
-              <div className="text-xs space-y-1 max-h-32 overflow-y-auto">
-                {taskStatus.actions.map((action, index) => (
-                  <div key={index} className="text-gray-600 truncate">• {action}</div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {taskStatus && taskStatus.started_at && (
-            <div className="text-xs text-gray-500 pt-2 border-t">
-              Started: {new Date(taskStatus.started_at).toLocaleString()}
-              {taskStatus.completed_at && (
-                <> • Completed: {new Date(taskStatus.completed_at).toLocaleString()}</>
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
+}
+
+// Legacy component for backward compatibility
+export function PromptInputBasic() {
+  return <PromptInputComponent />
 }

@@ -85,7 +85,10 @@ function PromptInput({
       >
         <div
           className={cn(
-            "border-input bg-background cursor-text rounded-3xl border p-2 shadow-xs focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+            "border-input bg-background cursor-text rounded-3xl border p-2 shadow-xs outline-none",        
+            "focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]",
+
+
             className
           )}
           onClick={() => textareaRef.current?.focus()}
@@ -136,7 +139,7 @@ function PromptInputTextarea({
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={handleKeyDown}
       className={cn(
-        "text-primary min-h-[44px] w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+        "text-foreground min-h-[44px] w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
         className
       )}
       rows={1}
